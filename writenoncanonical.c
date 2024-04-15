@@ -14,14 +14,14 @@
 
 volatile int STOP=FALSE;
 
-unsigned char FLAG = 0x5c;
+char FLAG = 0x5c;
 
 void establishmnet_phase(char* buff)
 {
-    int len = 5; 
-    unsigned char establish_addr = 0x03;
-    unsigned char establish_control = 0x08; //SET
-    unsigned char bcc1 = establish_addr ^ establish_control;
+    int len = 5;
+    char establish_addr = 0x03;
+    char establish_control = 0x08; //SET
+    char bcc1 = establish_addr ^ establish_control;
 
     buff[0] = FLAG;
     buff[1] = establish_addr;
@@ -36,7 +36,10 @@ int main(int argc, char** argv)
     int fd,c, res;
     struct termios oldtio,newtio;
     //char buf[255];
-    unsigned char buf[255] = { 0 };
+    char buf[255];
+    for (int i = 0; i < 255; i++) {
+        buf[i] = 'a';
+    }
     int i, sum = 0, speed = 0;
 
     if ( (argc < 2) ||
@@ -90,6 +93,7 @@ int main(int argc, char** argv)
     printf("New termios structure set\n");
 
     establishmnet_phase(buf);
+    printf("%c", buf[0]);
     /*for (i = 0; i < 255; i++) {
         buf[i] = 'a';
     }*/
