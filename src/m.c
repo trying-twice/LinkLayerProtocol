@@ -7,7 +7,7 @@ int main(int argc, char** argv)
         .role = 1,
         .baudRate = B38400,
         .numTries = 4,
-        .timeOut = 0
+        .timeOut = 100
     };
 
     return llopen(l);

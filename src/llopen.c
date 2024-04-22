@@ -37,8 +37,8 @@ int llopen(linkLayer connectionParameters)
         for (int i = 0; i < connectionParameters.numTries; i++)
         {
             res = send_message(fd, SET, buff, role);
-            if(check_for_UA(fd, buff, ack_message_length)) break; 
             usleep(connectionParameters.timeOut*1000);
+            if(check_for_UA(fd, buff, ack_message_length)) break; 
         }
     }
     else
@@ -46,8 +46,9 @@ int llopen(linkLayer connectionParameters)
         int res = 0;
         for (int i = 0; i < connectionParameters.numTries + 10; i++)
         {
-            if(check_for_SET(fd, buff, ack_message_length)) break;
             usleep(connectionParameters.timeOut*1000);
+            printf("ada\n");
+            if(check_for_SET(fd, buff, ack_message_length)) {printf("ada\n"); printf("%s", buff); break;}
         }
         res = send_message(fd, UA, buff, role);
     }
@@ -79,7 +80,7 @@ void* create_conn_message(enum SIGNALS type, int role, char* buff)
         buff[3] = BCC1;
         buff[4] = FLAG;
 
-        printf("%s", buff);
+        printf(" HERE - %x%x%x%x", buff[0], buff[1], buff[2], buff[3]);
     }else { perror("create_conn_message"); exit(-1); }
 }
 
@@ -100,7 +101,7 @@ void read_buffer(int fd, char* buff, int length)
     {
         int res = read(fd, buff + total_read, length - total_read); //only read length chars
         if (res < 0) {perror("read"); break;}
-        else if (res == 0) break; //EOF
+        //else if (res == 0) break; //EOF
         total_read += res;
     }
     buff[total_read] = '\0'; // Null-terminate the buffer
@@ -110,12 +111,16 @@ int check_for_UA(int fd, char *buff, int length)
 {
     bzero(buff, length);
     read_buffer(fd, buff, length);
-    return buff[2] == UA;
+    printf("%x", buff[2]);
+    if(buff[2] == 0x06) printf("!#!\n");
+    return buff[2] == 0x06;
 }
 
 int check_for_SET(int fd, char *buff, int length)
 {
     bzero(buff, length);
     read_buffer(fd, buff, length);
-    return buff[2] == SET;
+    printf("%x", buff[2]);
+    if(buff[2] == 0x08) printf("!#!dad\n");
+    return buff[2] == 0x08;
 }
