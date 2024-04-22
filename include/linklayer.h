@@ -10,7 +10,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include "signals.h"
 
 typedef struct linkLayer
 {
@@ -20,6 +19,14 @@ typedef struct linkLayer
     int numTries;
     int timeOut;
 } linkLayer;
+
+enum SIGNALS{
+    FLAG = '\x5c',
+    TRANS_ADDR = '\x03',
+    RECV_ADDR = '\x01',
+    SET = '\x08',
+    UA = '\x06'
+};
 
 //ROLE
 #define NOT_DEFINED -1
