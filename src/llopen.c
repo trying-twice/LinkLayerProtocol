@@ -1,12 +1,4 @@
-#include "../include/linklayer.h"
-#include <termios.h>
-
-#define ack_message_length 5
-
-void set_termios(struct termios* tio, struct linkLayer params);
-char* create_conn_message(int role, char* buff);
-void wait_conn_response(int fd);
-char check_message_type(char* buff);
+#include "../include/llopen.h"
 
 int llopen(linkLayer connectionParameters)
 {
@@ -33,24 +25,34 @@ int llopen(linkLayer connectionParameters)
 
     tcflush(fd, TCIOFLUSH);         /* Flush the fd to get rid of old data */
 
+
     printf("New termios structure set\n");
 
     int role = connectionParameters.role;
     char buff[ack_message_length];
-    strcpy(buff, create_conn_message(role, buff));
 
     if(!role)
-    { 
-        int res = write(fd, buff, ack_message_length);
-        wait_response();
+    {   
+        int res = 0;
+        for (int i = 0; i < connectionParameters.numTries; i++)
+        {
+            res = send_message(fd, SET, buff, role);
+            if(check_for_UA(fd, buff, ack_message_length)) break; 
+            usleep(connectionParameters.timeOut*1000);
+        }
     }
     else
     {
-        wait_response();
-        int res = write(fd, buff, ack_message_length);
+        int res = 0;
+        for (int i = 0; i < connectionParameters.numTries + 10; i++)
+        {
+            if(check_for_SET(fd, buff, ack_message_length)) break;
+            usleep(connectionParameters.timeOut*1000);
+        }
+        res = send_message(fd, UA, buff, role);
     }
 
-
+    return 1;
 }
 
 void set_termios(struct termios* tio, struct linkLayer params)
@@ -63,10 +65,10 @@ void set_termios(struct termios* tio, struct linkLayer params)
     tio->c_cc[VMIN] = params.numTries;      /* blocking read until x chars received */
 }
 
-char* create_conn_message(int role, char* buff)
+void* create_conn_message(enum SIGNALS type, int role, char* buff)
 {
     char addr = role ? RECV_ADDR : TRANS_ADDR;
-    char cntrl = role ? UA : SET;
+    char cntrl = type;
     char BCC1 = addr ^ cntrl;
 
     if(sizeof(buff)/sizeof(buff[0]) >= 5)
@@ -76,23 +78,44 @@ char* create_conn_message(int role, char* buff)
         buff[2] = cntrl;
         buff[3] = BCC1;
         buff[4] = FLAG;
-    }else { perror("create_conn_message"); exit(-1); }
 
-    return buff;
+        printf("%s", buff);
+    }else { perror("create_conn_message"); exit(-1); }
 }
 
-void wait_conn_response(int fd)
+int send_message(int fd, enum SIGNALS type, char* buff, int role)
 {
-    char buff[64];
-    int res = 0;
-    while (res < 5)
+    char response[buff_size];
+    int res;
+    buff = create_conn_message(type, role, buff);
+    res = write(fd, buff, ack_message_length);
+
+    return res;
+}
+
+void read_buffer(int fd, char* buff, int length)
+{
+    int total_read = 0;
+    while (total_read < length)
     {
-        int res = read(fd, buff, 5);   /* returns after 5 chars have been input */
-        buff[res] = 0;                    /* so we can printf... */
-        if (res >= 5)
-        {
-            printf(":%x%x%x%x%x:%d\n", buff[0], buff[1], buff[2], buff[3], buff[4], res);
-            if(buff[2] == UA) break;
-        }
+        int res = read(fd, buff + total_read, length - total_read); //only read length chars
+        if (res < 0) {perror("read"); break;}
+        else if (res == 0) break; //EOF
+        total_read += res;
     }
+    buff[total_read] = '\0'; // Null-terminate the buffer
+}
+
+int check_for_UA(int fd, char *buff, int length)
+{
+    bzero(buff, length);
+    read_buffer(fd, buff, length);
+    return buff[2] == UA;
+}
+
+int check_for_SET(int fd, char *buff, int length)
+{
+    bzero(buff, length);
+    read_buffer(fd, buff, length);
+    return buff[2] == SET;
 }
