@@ -40,27 +40,23 @@ int llopen(linkLayer connectionParameters)
     {   
         printf("Transmitter!\n");
         int res = 0;
+        res = send_message(fd, SET, buff, ack_message_length, role, &lock);
         for (int i = 0; i < connectionParameters.numTries; i++)
         {
-            res = send_message(fd, SET, buff, ack_message_length, role, &lock);
             usleep(connectionParameters.timeOut*1000);
-            printf("buff after send - %x%x%x%x\n", buff[0], buff[1], buff[2], buff[3]);
-            if(check_for_UA(fd, buff, ack_message_length, &lock)) break;
+            if(check_for_UA(fd, &lock, role)) break;
         }
-        printf("buff after read - %x%x%x%x\n", buff[0], buff[1], buff[2], buff[3]);
     }
     else
     {
         printf("Receiver!\n");
         int res = 0;
-        for (int i = 0; ; i++)
+        for (int i = 0; i < connectionParameters.numTries; i++)
         {
+            if(check_for_SET(fd, &lock, role)) break;
             usleep(connectionParameters.timeOut*1000);
-            if(check_for_SET(fd, buff, ack_message_length, &lock)) break;
         }
-        printf("buff after read - %x%x%x%x\n", buff[0], buff[1], buff[2], buff[3]);
         res = send_message(fd, UA, buff, ack_message_length, role, &lock);
-        printf("buff after send - %x%x%x%x\n", buff[0], buff[1], buff[2], buff[3]);
     }
 
     return 1;
@@ -72,8 +68,8 @@ void set_termios(int fd, struct termios* tio, struct linkLayer params)
     tio->c_iflag = IGNPAR;
     tio->c_oflag = 0;
     tio->c_lflag = 0;                       /* set input mode NON-CANONICAL*/
-    tio->c_cc[VTIME] = params.timeOut;      /* inter-character timer unused,  waits 0 seconds between chars*/
-    tio->c_cc[VMIN] = params.numTries;      /* blocking read until x chars received */
+    tio->c_cc[VTIME] = 0.1;      /* inter-character timer unused,  waits 0 seconds between chars*/
+    tio->c_cc[VMIN] = 0;      /* blocking read until x chars received */
 
     if (tcsetattr(fd, TCSANOW, tio) == -1) {perror("tcsetattr"); exit(-1);}
 }
@@ -93,7 +89,7 @@ void* create_conn_message(enum SIGNALS type, int role, char* buff, int length)
         buff[3] = BCC1;
         buff[4] = FLAG;
 
-        //printf(" HERE - %x%x%x%x\n", buff[0], buff[1], buff[2], buff[3]);
+        printf(" HERE - %x%x%x%x%x\n", buff[0], buff[1], buff[2], buff[3], buff[4]);
     }else { perror("create_conn_message"); exit(-1); }
 }
 
@@ -102,55 +98,166 @@ int send_message(int fd, enum SIGNALS type, char* buff, int length, int role, st
     int res;
     create_conn_message(type, role, buff, length);
 
+    printf(" HERE2 - %x%x%x%x%x\n", buff[0], buff[1], buff[2], buff[3], buff[4]);
+
     lock->l_type = F_WRLCK;
     if(fcntl(fd, F_SETLK, lock) < 0) perror("SEND_LOCK");
     
-    //printf("b - %c <-\n", buff[2]);
+    printf("b - %x <-\n", buff[2]);
     res = write(fd, buff, ack_message_length);
     printf("WRITE DONE!\n");
 
     lock->l_type = F_UNLCK;
     fcntl(fd, F_SETLK, lock);
 
-    return res;
+    return res; 
 }
 
 int read_buffer(int fd, char* buff, int length, struct flock* lock)
 {
     int total_read = 0;
-    int res = -1;
+    int res = 1;
 
     lock->l_type = F_WRLCK;
-    if(fcntl(fd, F_SETLK, lock) < 0) perror("READ_LOCK");
+    if(fcntl(fd, F_SETLK, lock) < 0) {perror("READ_LOCK"); return -1;}
 
-    while (total_read < length)
+    while (total_read < length && res > 0)
     {
         res = read(fd, buff + total_read, length - total_read); //only reasd length chars
-        printf("READ DONE!\n");
-        //printf("%d\n", res);
         if (res < 0) {perror("read"); break;}
         total_read += res;
     }
 
-    //if (ftruncate(fd, 0) < 0) perror("ftruncate");  // wipe the file --> tcflush?
-
     lock->l_type = F_UNLCK;
     fcntl(fd, F_SETLK, lock);
     
-    buff[total_read] = '\0';
-    return res;
+    return total_read;
 }
 
-int check_for_UA(int fd, char *buff, int length, struct flock* lock)
+int check_for_SET(int fd, struct flock* lock, int role)
+{
+    int res = 0;
+    char c_read = ' ';
+    int n_pass = TRUE;
+    int ret = 0;
+    char BCC1 = TRANS_ADDR ^ SET;
+    int flag = -1;
+    int max_zero_attemps = 150;
+    for (int state = 0, it = 0; state < 5; state++)
+    {
+        printf("state - %d\n", state);
+        printf("pass - %d\n", n_pass);
+        n_pass = TRUE;
+        while(res >= 0 && n_pass)   // infinitte loops
+        {
+            res = read_buffer(fd, &c_read, 1, lock);
+            it = res == 0 ? it + 1: 0;
+            if (!res) continue;
+            switch (state)
+            {
+            case 0: 
+                printf("read 0 - %x\n", c_read);
+                if (c_read == FLAG) {n_pass = FALSE;}
+                break;
+            case 1:
+                printf("read 1 - %x \n", c_read);
+                if (c_read == TRANS_ADDR) {n_pass = FALSE;}
+                else if (c_read == FLAG) continue;
+                else state = 0;
+                break;
+            case 2:
+                printf("read 2 - %x \n", c_read);
+                if (c_read == SET) {n_pass = FALSE; ret = 1;}
+                else if (c_read == FLAG) state = 1;
+                else state = 0;
+                break;
+            case 3:
+                printf("read 3 - %x \n", c_read);
+                if (c_read == BCC1) {n_pass = FALSE;}
+                else if (c_read == FLAG) {state = 1; if(ret) ret = 0;}
+                else {state = 0; if(ret) ret = 0;}
+                break;
+            case 4:
+                printf("read 4 - %x \n", c_read);
+                if(c_read == FLAG) {n_pass = FALSE;}
+                else {state = 0; if(ret) ret = 0;}
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    printf("ret - %d\n", ret);
+    return ret;
+}
+
+int check_for_UA(int fd, struct flock* lock, int role)
+{
+    int res = 0;
+    char c_read = ' ';
+    int n_pass = TRUE;
+    int ret = 0;
+    char BCC1 = RECV_ADDR ^ UA;
+    int flag = -1;
+    int max_zero_attemps = 150;
+    for (int state = 0, it = 0; state < 5; state++)
+    {
+        printf("state - %d\n", state);
+        printf("pass - %d\n", n_pass);
+        n_pass = TRUE;
+        while(res >= 0 && n_pass)   // infinitte loops
+        {
+            res = read_buffer(fd, &c_read, 1, lock);
+            it = res == 0 ? it + 1: 0;
+            if (!res) continue;
+            switch (state)
+            {
+            case 0: 
+                printf("read 0 - %x\n", c_read);
+                if (c_read == FLAG) {n_pass = FALSE;}
+                break;
+            case 1:
+                printf("read 1 - %x \n", c_read);
+                if (c_read == RECV_ADDR) {n_pass = FALSE;}
+                else if (c_read == FLAG) continue;
+                else state = 0;
+                break;
+            case 2:
+                printf("read 2 - %x \n", c_read);
+                if (c_read == UA) {n_pass = FALSE; ret = 1;}
+                else if (c_read == FLAG) state = 1;
+                else state = 0;
+                break;
+            case 3:
+                printf("read 3 - %x \n", c_read);
+                if (c_read == BCC1) {n_pass = FALSE;}
+                else if (c_read == FLAG) {state = 1; if(ret) ret = 0;}
+                else {state = 0; if(ret) ret = 0;}
+                break;
+            case 4:
+                printf("read 4 - %x \n", c_read);
+                if(c_read == FLAG) {n_pass = FALSE;}
+                else {state = 0; if(ret) ret = 0;}
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    printf("ret - %d\n", ret);
+    return ret;
+}
+
+/*int check_for_UA(int fd, char *buff, int length, struct flock* lock)
 {
     //bzero(buff, length);
     read_buffer(fd, buff, length, lock);
     return buff[2] == 0x06;
-}
+} */  
  
-int check_for_SET(int fd, char *buff, int length, struct flock* lock)
+/*int check_for_SET(int fd, char *buff, int length, struct flock* lock)
 {
     //bzero(buff, length);
     read_buffer(fd, buff, length, lock);
     return buff[2] == 0x08;
-}
+}*/
