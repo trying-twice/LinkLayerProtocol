@@ -247,17 +247,3 @@ int check_for_UA(int fd, struct flock* lock, int role)
     printf("ret - %d\n", ret);
     return ret;
 }
-
-/*int check_for_UA(int fd, char *buff, int length, struct flock* lock)
-{
-    //bzero(buff, length);
-    read_buffer(fd, buff, length, lock);
-    return buff[2] == 0x06;
-} */  
- 
-/*int check_for_SET(int fd, char *buff, int length, struct flock* lock)
-{
-    //bzero(buff, length);
-    read_buffer(fd, buff, length, lock);
-    return buff[2] == 0x08;
-}*/

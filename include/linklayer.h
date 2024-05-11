@@ -14,18 +14,26 @@
 typedef struct linkLayer
 {
     char serialPort[50];
-    int role;       //defines the role of the program: 0==Transmitter, 1=Receiver
+    int role;               //defines the role of the program: 0 == Transmitter, 1 == Receiver
     int baudRate;
     int numTries;
     int timeOut;
 } linkLayer;
 
-enum SIGNALS{
+enum SIGNALS
+{
     FLAG = '\x5c',
     TRANS_ADDR = '\x03',
     RECV_ADDR = '\x01',
     SET = '\x08',
-    UA = '\x06'
+    UA = '\x06',
+    DISC = '\x0A',
+    I1 = '\xC0',
+    I0 = '\x80',
+    RR1 = '\x11',
+    RR0 = '\x01',
+    REJ1 = '\x15',
+    REJ = '\x05'
 };
 
 //ROLE
@@ -47,6 +55,8 @@ enum SIGNALS{
 #define FALSE 0
 #define TRUE 1
 
+#define bzero(b,len) (memset((b), '\0', (len)), (void) 0)
+
 // Opens a conection using the "port" parameters defined in struct linkLayer, returns "-1" on error and "1" on sucess
 int llopen(linkLayer connectionParameters);
 // Sends data in buf with size bufSize
@@ -57,3 +67,10 @@ int llread(char* packet);
 int llclose(int showStatistics);
 
 #endif
+
+/*THREE TYPES OF FRAMES:
+    I: DATA FRAMES : F A C BCC1 DATA ... DATA BCC2 F
+    S:
+        -> F A C BCC1 F
+    U:
+*/
