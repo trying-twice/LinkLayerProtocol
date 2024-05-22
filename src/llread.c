@@ -10,153 +10,133 @@ int llread(char* buffer)
     {
         perror(s_port);
         exit(-1);
+    }   
+
+    struct packet packet = 
+    {
+        .buffer = NULL,
+        .first = NULL,
+        .last = NULL,
+        .size = 0,
+    };
+        
+    enum SIGNALS ret_type;
+    int read = 0;
+    while(1)
+    {
+        if(ret_type = get_packet(fd, &packet, &read))
+        {
+            printf("size received - %d\n", packet.size);
+            send_response(fd, ret_type);
+            clean_packet(&packet);
+            packet_to_buffer(&packet, buffer);
+
+            return read;
+        }
     }
 
-    struct packet packet;
-    get_packet(fd, packet);
-
+    return -1;
 }
 
 
-enum SIGNALS geT_packet(int fd, struct packet packet)
+enum SIGNALS get_packet(int fd, struct packet* packet, int* read)
 {
 
     enum SIGNALS type = ERROR;
     int retr_count_1 = 0;
     int retr_count_2 = 0;
 
-    if (validate_packet_BCC1(fd, packet, &type, retr_count_1)) return ERROR;
-    if (validate_packet_BCC2(fd, packet, &type, retr_count_2)) return ERROR;
+    *read = 0;
 
-    return type;
+    int c = 0;
+    if (!validate_packet_BCC1(fd, packet, &type, 0, retr_count_1)) return ERROR;
+    else *read = 5;
+    if ( (c = validate_packet_BCC2(fd, packet, &type, retr_count_2)) <= 0)
+    {
+        send_response(fd, REJ);
+        //how do i know if its duplicate??
+        return ERROR;
+    }else *read = 5 + c;
+
+    return type;    
 }
 
-int validate_packet_BCC1(int fd, struct packet packet, enum SIGNALS* type, int retr_count)
+int validate_packet_BCC2(int fd, struct packet* packet, enum SIGNALS* type, int retr_count)
 {
-    int res = 0, n_pass = TRUE, exit = 0;
+    int res = 1, n_pass = TRUE, ret = 0, count = 0;
     char c_read = ' ';
-    char BCC1 = ' ';
-    for (int state = 0; exit < 1; state++)
-    {
-        printf("state - %d\n", state);
-        printf("pass - %d\n", n_pass);
-        n_pass = TRUE;
-        while(res >= 0 && n_pass)   // infinitte loops
-        {
-            res = read_buffer(fd, &c_read, 1);
-            if (!res) continue;                  // fix
+    char BCC2 = ' ';               
+    char buffer[2048];
+    
 
-            switch (state)
+    printf("Data: \n");
+    while(res >= 0 && n_pass)   // infinitte loops
+    {
+        res = read_buffer(fd, &c_read, 1);
+        if(!res) continue;
+
+        printf("%x ", c_read);
+        if (c_read == FLAG)
+        {
+            n_pass = FALSE;
+            printf("\n");
+            char actual_bcc2 = calculate_BCC2(buffer, count);
+            char expected_bcc2 = buffer[count - 1];
+            printf("BCC2 : %x -- %x \n", actual_bcc2, expected_bcc2);
+            if(actual_bcc2 == expected_bcc2) buffer[count] = FLAG;
+            else return 0;
+            break;
+        }
+        else if(c_read == ESCAPE)
+        {
+            printf("escape - %x\n", c_read);
+            res = read_buffer(fd, &c_read, 1);
+            if(res != 0)
             {
-            case 0:
-                printf("read 0 - %x\n", c_read);
-                if (c_read == FLAG) {n_pass = FALSE;}
-                break;
-            case 1:
-                printf("read 1 - %x \n", c_read);
-                if (c_read == TRANS_ADDR) {n_pass = FALSE;}
-                else if (c_read == FLAG) continue;
-                else state = 0;
-                break;
-            case 2:
-                printf("read 2 - %x \n", c_read);
-                if (c_read == I0) {n_pass = FALSE; BCC1 = TRANS_ADDR ^ I0;}
-                else if (c_read == I1) {n_pass = FALSE; BCC1 = TRANS_ADDR ^ I1;}
-                else if (c_read == FLAG) state = 1;
-                else state = 0;
-                break;
-            case 3:
-                printf("read 3 - %x \n", c_read);
-                if (c_read == BCC1) {n_pass = FALSE; exit = 1; *type = BCC1 ^ TRANS_ADDR;}
-                else if (c_read == FLAG) {state = 1;}
-                else state = 0;
-                break;
-            default:
-                break;
+                if (c_read == SIGNAL_FLAG) c_read = FLAG;
+                else if (c_read == SIGNAL_ESCAPE) c_read = ESCAPE;
+                else
+                // case where we just read a lonely escape, c_read is whatever is after escape and will be added below
+                {
+                    buffer[count] = ESCAPE;
+                    count++;
+                }
             }
         }
+
+        buffer[count] = c_read;
+        count++;
+        //printf("c %d \n", count);
     }
+    printf("Data end: \n");
+    
+    append_to_packet(packet, buffer, count + 2);
 
-    char buffer[4];
-    buffer[0] = FLAG;
-    buffer[1] = TRANS_ADDR;
-    buffer[2] = type;
-    buffer[3] = BCC1;
-    append_to_packet(&packet, buffer, 4);
-
-    return exit;
+    return count + 2;
 }
 
-int validate_packet_BCC2(int fd, struct packet packet, enum SIGNALS* type, int retr_count)
+
+bool send_response(int fd, enum SIGNALS type)
 {
-    int res = 0, n_pass = TRUE, exit = 0, ret = 0;;
-    char c_read = ' ';
-    char BCC2 = ' ';
-    char buffer[256];
-    for (int state = 0; exit < 1; state++)
-    {
-        printf("state - %d\n", state);
-        printf("pass - %d\n", n_pass);
-        n_pass = TRUE;  
-        while(res >= 0 && n_pass)   // infinitte loops
-        {
-            res = read_buffer(fd, &c_read, 1);
-            if (!res) continue;                  // fix
+    enum SIGNALS t;
+    if (type == I0 || type == I1) t = RR1;
+    else t = RR0;
 
-            switch (state)
-            {
-            case 0:                             
-                // data case
-                printf("read 0 - %x\n", c_read);
-                //when leaving add a '\n' or some shit to indicate the end of the data on buffer
-                if (c_read == BCC2) {n_pass = FALSE;}               //waht if data is flag
-                break;
-            case 1:
-                printf("read 1 - %x \n", c_read);
-                if (c_read == FLAG) {n_pass = FALSE; ret = 1;}
-                else state = 0;
-                break;
-            default:
-                break;
-            }
-        }
-    }
+    char buff[BCC1_FIELD_LENGTH];
+    construct_BCC1(t, 1, buff, BCC1_FIELD_LENGTH);
 
-    return 1;
+    int res = write(fd, buff, BCC1_FIELD_LENGTH);
+    if(res <= 0) return ERROR;
+    
+    return TRUE;
 }
 
-int read_buffer(int fd, char* buff, int length)
+void packet_to_buffer(struct packet* packet, char* buffer)
 {
-    int total_read = 0;
-    int res = 1;
-
-    while (total_read < length && res > 0)
+    for (int i = 0; i < packet->size; i++)
     {
-        res = read(fd, buff + total_read, length - total_read); //only reasd length chars
-        if (res < 0) {perror("read"); break;}
-        total_read += res;
+        buffer[i] = packet->buffer[i];
     }
-
-    return total_read;
-}
-
-int append_to_packet(struct packet* packet, char* buffer, size_t buff_length)
-{
-    int new_size = packet->size + buff_length;
-
-    packet->buffer = realloc(packet->buffer, sizeof(char) * new_size);
-    if(packet->buffer == NULL) return 0;
-
-    for(int i = 0; i < buff_length; i++)
-    {
-        packet->buffer[i + packet->size] = buffer[i];
-    }
-
-    if(packet->size == 0) packet->first = packet->buffer[0];
-    packet->size = new_size;
-    packet->last = packet->buffer[new_size - 1];
-
-    return 1;
 }
 
 
