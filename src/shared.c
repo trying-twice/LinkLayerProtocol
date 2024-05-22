@@ -110,6 +110,7 @@ int validate_packet_BCC1(int fd, struct packet* packet, enum SIGNALS* type, int 
                 {
                     buffer[state] = c_read;
                     BCC1 = TRANS_ADDR ^ c_read;
+                    *type = I1;
                     state++;
                 } else return 0;
                 break;

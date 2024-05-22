@@ -28,7 +28,7 @@ int llwrite(char* buffer, int length)
     int res = 0;
     while(1)
     {
-        res = send_packet(fd, &packet, type, buff, length);
+        res = send_packet(fd, &packet, type, buff, 100);
 
         enum SIGNALS t = ERROR;
         bool clean = FALSE;
@@ -46,25 +46,34 @@ int llwrite(char* buffer, int length)
             switch (t)
             {
                 case REJ:
+                    printf("Received REJ!\n");
                     retr_count++;
                     break;
                 case RR1:
+                    printf("Received RR1!\n");
+                    clean = TRUE;
+                    retr_count = 0;
+                    break;
+                case RR0:
+                    printf("Received RR0!\n");
                     clean = TRUE;
                     retr_count = 0;
                     break;
                 default:
                     break;
             }
+            if(t == (unsigned char)"\x11")
+            {
+                printf("Received R11R1!\n");
+                clean = TRUE;
+                retr_count = 0;
+                break; 
+            }
 
         }
-        int g = 0;
-        if(clean)
-        {
-            clean_packet(&packet);
-            g = 1;
-        }
 
-        sleep(1);
+        if(clean) clean_packet(&packet);
+
     }
 
     return res;
@@ -84,7 +93,7 @@ int send_packet(int fd, struct packet* packet, char type, char* data, int data_l
     for(int i = 0; i < packet->size; i++)
     {
         if(i < 5) printf("%x", packet->buffer[i]);
-        else printf("%d", packet->buffer[i]);
+        else printf("%x", packet->buffer[i]);
     }
     printf("\n");
     res = write(fd, packet->buffer, packet->size);
@@ -125,6 +134,8 @@ enum SIGNALS read_response(int fd)
 
     int res = read_buffer(fd, buff, BCC1_FIELD_LENGTH);
     if(res <= 0) return ERROR;
+
+    printf("read response - %d --- %x \n", res, buff[2]);
 
     return buff[2];
 }

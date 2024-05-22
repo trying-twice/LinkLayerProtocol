@@ -24,7 +24,7 @@ int llread(char* buffer)
     int read = 0;
     while(1)
     {
-        if(ret_type = get_packet(fd, &packet, &read))
+        if((ret_type = get_packet(fd, &packet, &read)))
         {
             printf("size received - %d\n", packet.size);
             send_response(fd, ret_type);
@@ -127,6 +127,8 @@ bool send_response(int fd, enum SIGNALS type)
 
     int res = write(fd, buff, BCC1_FIELD_LENGTH);
     if(res <= 0) return ERROR;
+
+    printf("send response - %d\n", res);
     
     return TRUE;
 }
