@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdbool.h>
 
 typedef struct linkLayer
 {
@@ -23,6 +24,9 @@ typedef struct linkLayer
 enum SIGNALS
 {
     FLAG = '\x5c',
+    ESCAPE = '\x5d',
+    SIGNAL_FLAG = '\x7c',
+    SIGNAL_ESCAPE = '\x7d',
     TRANS_ADDR = '\x03',
     RECV_ADDR = '\x01',
     SET = '\x08',
@@ -33,7 +37,8 @@ enum SIGNALS
     RR1 = '\x11',
     RR0 = '\x01',
     REJ1 = '\x15',
-    REJ = '\x05'
+    REJ = '\x05',
+    ERROR = '\x00'
 };
 
 //ROLE
@@ -44,6 +49,7 @@ enum SIGNALS
 
 //SIZE of maximum acceptable payload; maximum number of bytes that application layer should send to link layer
 #define MAX_PAYLOAD_SIZE 1000
+#define BCC1_FIELD_LENGTH 4
 
 //CONNECTION deafault values
 #define BAUDRATE_DEFAULT B38400
@@ -57,6 +63,7 @@ enum SIGNALS
 
 #define bzero(b,len) (memset((b), '\0', (len)), (void) 0)
 
+/*
 // Opens a conection using the "port" parameters defined in struct linkLayer, returns "-1" on error and "1" on sucess
 int llopen(linkLayer connectionParameters);
 // Sends data in buf with size bufSize
@@ -65,7 +72,7 @@ int llwrite(char* buf, int bufSize);
 int llread(char* packet);
 // Closes previously opened connection; if showStatistics==TRUE, link layer should print statistics in the console on close
 int llclose(int showStatistics);
-
+*/
 #endif
 
 /*THREE TYPES OF FRAMES:
